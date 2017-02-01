@@ -520,6 +520,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--dataset_path', default='../lfw')
     parser.add_argument('-d', '--demo', action='store_true')
+    parser.add_argument('-v', '--verbose', action='store_true')
     args = parser.parse_args()
 
     imglistfile = "./imglist.txt"
@@ -547,7 +548,7 @@ def main():
 
     files_wo_faces, files_w_multiple_faces = 0, 0
     progress_bar = ProgressBar(len(img_paths))
-    for imgpath in img_paths:
+    for imgpath in img_paths[:20]:
         #print "######\n", imgpath
         img = cv2.imread(imgpath)
         img_matlab = img.copy()
@@ -558,24 +559,28 @@ def main():
         boundingboxes, points = detect_face(img_matlab, minsize, PNet, RNet, ONet, threshold, False, factor)
 
         if len(boundingboxes) != 1:
+            # we are interested in images with either zero or more than one face detected
             if len(boundingboxes) == 0:
                 files_wo_faces += 1
             else:
                 files_w_multiple_faces += 1
 
-            # we are interested in images with either zero or more than one face detected
-            print 'Image with {} faces: {}\n'.format(len(boundingboxes), imgpath)
-            """
+            if args.verbose:
+                print 'Image with {} faces: {}\n'.format(len(boundingboxes), imgpath)
+
             img = drawBoxes(img, boundingboxes)
             draw_points(img, points)
-            cv2.imshow('img', img)
-            save_path = '/test/{}'.format(os.path.relpath(imgpath, args.dataset_path))
-            print save_path
+            #cv2.imshow('img', img)
+            save_path = './test/{}'.format(os.path.relpath(imgpath, args.dataset_path))
+            if not os.path.exists(os.path.dirname(save_path)):
+                os.makedirs(os.path.dirname(save_path))
+            tmp_path = 'img.jpg'
             cv2.imwrite(save_path, img)
+
             ch = cv2.waitKey(0) & 0xFF
             if ch == 27:
                 break
-                """
+
         progress_bar.numerator += 1
         sys.stdout.write('\r{}'.format(progress_bar))
         sys.stdout.flush()
