@@ -12,10 +12,11 @@ import cv2
 import numpy as np
 from python_wrapper import *
 
-
 OUTPUT_DIR_ZERO_FACES = 'out_images/no_faces'
 OUTPUT_DIR_MULTIPLE_FACES = 'out_images/multiple_faces'
 IMG_LIST_FILE = "./imglist.txt"
+
+LOG_FILE = 'log.txt'
 
 CAFFE_MODEL_PATH = "./model"
 
@@ -202,7 +203,7 @@ def drawBoxes(im, boxes):
     return im
 
 
-from time import time
+from time import time, gmtime, strftime
 
 _tstart_stack = []
 
@@ -216,8 +217,6 @@ def toc(fmt="Elapsed: %s s"):
 
 
 def detect_face(img, minsize, PNet, RNet, ONet, threshold, fastresize, factor):
-    img2 = img.copy()
-
     factor_count = 0
     total_boxes = np.zeros((0, 9), np.float)
     points = []
@@ -226,12 +225,7 @@ def detect_face(img, minsize, PNet, RNet, ONet, threshold, fastresize, factor):
     minl = min(h, w)
     img = img.astype(float)
     m = 12.0 / minsize
-    minl = minl * m
-
-    # total_boxes = np.load('total_boxes.npy')
-    # total_boxes = np.load('total_boxes_242.npy')
-    # total_boxes = np.load('total_boxes_101.npy')
-
+    minl *= m
 
     # create scale pyramid
     scales = []
@@ -253,7 +247,6 @@ def detect_face(img, minsize, PNet, RNet, ONet, threshold, fastresize, factor):
             im_data = (im_data - 127.5) * 0.0078125  # [0,255] -> [-1,1]
         # im_data = imResample(img, hs, ws); print "scale:", scale
 
-
         im_data = np.swapaxes(im_data, 0, 2)
         im_data = np.array([im_data], dtype=np.float)
         PNet.blobs['data'].reshape(1, 3, ws, hs)
@@ -262,10 +255,6 @@ def detect_face(img, minsize, PNet, RNet, ONet, threshold, fastresize, factor):
 
         boxes = generateBoundingBox(out['prob1'][0, 1, :, :], out['conv4-2'][0], scale, threshold[0])
         if boxes.shape[0] != 0:
-            # print boxes[4:9]
-            # print 'im_data', im_data[0:5, 0:5, 0], '\n'
-            # print 'prob1', out['prob1'][0,0,0:3,0:3]
-
             pick = nms(boxes, 0.5, 'Union')
 
             if len(pick) > 0:
@@ -274,22 +263,11 @@ def detect_face(img, minsize, PNet, RNet, ONet, threshold, fastresize, factor):
         if boxes.shape[0] != 0:
             total_boxes = np.concatenate((total_boxes, boxes), axis=0)
 
-    # np.save('total_boxes_101.npy', total_boxes)
-
-    #####
-    # 1 #
-    #####
-    # print "[1]:",total_boxes.shape[0]
-    # print total_boxes
-    # return total_boxes, []
-
-
     numbox = total_boxes.shape[0]
     if numbox > 0:
         # nms
         pick = nms(total_boxes, 0.7, 'Union')
         total_boxes = total_boxes[pick, :]
-        # print "[2]:",total_boxes.shape[0]
 
         # revise and convert to square
         regh = total_boxes[:, 3] - total_boxes[:, 1]
@@ -300,22 +278,11 @@ def detect_face(img, minsize, PNet, RNet, ONet, threshold, fastresize, factor):
         t4 = total_boxes[:, 3] + total_boxes[:, 8] * regh
         t5 = total_boxes[:, 4]
         total_boxes = np.array([t1, t2, t3, t4, t5]).T
-        # print "[3]:",total_boxes.shape[0]
-        # print regh
-        # print regw
-        # print 't1',t1
-        # print total_boxes
 
         total_boxes = rerec(total_boxes)  # convert box to square
-        # print "[4]:",total_boxes.shape[0]
 
         total_boxes[:, 0:4] = np.fix(total_boxes[:, 0:4])
-        # print "[4.5]:",total_boxes.shape[0]
-        # print total_boxes
         [dy, edy, dx, edx, y, ey, x, ex, tmpw, tmph] = pad(total_boxes, w, h)
-
-    # print total_boxes.shape
-    # print total_boxes
 
     numbox = total_boxes.shape[0]
     if numbox > 0:
@@ -332,23 +299,8 @@ def detect_face(img, minsize, PNet, RNet, ONet, threshold, fastresize, factor):
         tempimg = np.zeros((numbox, 24, 24, 3))  # (24, 24, 3, numbox)
         for k in range(numbox):
             tmp = np.zeros((tmph[k], tmpw[k], 3))
-
-            # print "dx[k], edx[k]:", dx[k], edx[k]
-            # print "dy[k], edy[k]:", dy[k], edy[k]
-            # print "img.shape", img[y[k]:ey[k]+1, x[k]:ex[k]+1].shape
-            # print "tmp.shape", tmp[dy[k]:edy[k]+1, dx[k]:edx[k]+1].shape
-
             tmp[dy[k]:edy[k] + 1, dx[k]:edx[k] + 1] = img[y[k]:ey[k] + 1, x[k]:ex[k] + 1]
-            # print "y,ey,x,ex", y[k], ey[k], x[k], ex[k]
-            # print "tmp", tmp.shape
-
             tempimg[k, :, :, :] = cv2.resize(tmp, (24, 24))
-            # tempimg[k,:,:,:] = imResample(tmp, 24, 24)
-            # print 'tempimg', tempimg[k,:,:,:].shape
-            # print tempimg[k,0:5,0:5,0]
-            # print tempimg[k,0:5,0:5,1]
-            # print tempimg[k,0:5,0:5,2]
-            # print k
 
         # print tempimg.shape
         # print tempimg[0,0,0,:]
@@ -452,11 +404,6 @@ def detect_face(img, minsize, PNet, RNet, ONet, threshold, fastresize, factor):
                     # print "[11]:",total_boxes.shape[0]
                     points = points[pick, :]
 
-    #####
-    # 3 #
-    #####
-    # print "3:",total_boxes.shape
-
     return total_boxes, points
 
 
@@ -531,14 +478,16 @@ def get_img_paths(folder_path, extension='jpg'):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-f', '--dataset_path', default='../lfw')
-    parser.add_argument('-d', '--demo', action='store_true')
+    parser.add_argument('-d', '--dataset_path', default='../lfw')
+    parser.add_argument('-l', '--list', action='store_true')
     parser.add_argument('-v', '--verbose', action='store_true')
     args = parser.parse_args()
 
     minsize = 20
 
+    # default
     threshold = [0.6, 0.7, 0.7]
+    # threshold = [0.54, 0.57, 0.7]
     factor = 0.709
 
     caffe.set_mode_gpu()
@@ -547,8 +496,8 @@ def main():
     ONet = caffe.Net(CAFFE_MODEL_PATH + "/det3.prototxt", CAFFE_MODEL_PATH + "/det3.caffemodel", caffe.TEST)
 
     # load the image paths
-    if args.demo:
-        # load test files
+    if args.list:
+        # load files from IMG_LIST_FILE
         with open(IMG_LIST_FILE, 'r') as f:
             img_paths = [imgpath.split('\n')[0] for imgpath in f.readlines()]
     else:
@@ -590,6 +539,12 @@ def main():
     print '################### FINISHED ############################'
     print '{} files without faces\n{} files with more than 1 face'.format(
         progress_bar.zero_faces, progress_bar.multiple_faces)
+    with open(LOG_FILE, 'a+') as log_file:
+        log_file.write('\n############## NEW RUN ###########################')
+        log_file.write('threshold: {}\nfactor: {}\n'.format(threshold, factor))
+        log_file.write('{}: zero faces: {} | multiple faces: {}\n'.format(strftime("%Y-%m-%d %H:%M:%S", gmtime()),
+                                                                          progress_bar.zero_faces,
+                                                                          progress_bar.multiple_faces))
 
 
 if __name__ == "__main__":
